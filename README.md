@@ -4,9 +4,9 @@ This repository contains an implementation of the model presented in the paper *
 
 The model simulates the growth of a city by sequentially adding workers and assigning each of them to the activity center that maximizes the utility function
 
-\[
-Z_{ij} = \eta_j - \frac{d_{ij}}{l}\left[1+\left(\frac{T(j)}{c}\right)^\mu\right],
-\]
+
+$$Z_{ij} = \eta_j - \frac{d_{ij}}{l}\left[1+\left(\frac{T(j)}{c}\right)^\mu\right]$$,
+
 
 where the congestion term depends on the current traffic attracted by each center. As the population increases, the model reproduces the transition from a monocentric to a polycentric urban structure.
 
