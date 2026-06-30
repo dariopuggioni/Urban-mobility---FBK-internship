@@ -11,6 +11,7 @@ list of functions:
     _seed_numba_rng
     _sample_point_from_center
     _grow_numba
+    _assign_best_center
     run_growth
     P_star_theory           
     employment_density_grid
@@ -19,6 +20,8 @@ list of functions:
     _data_per_point
     plot_arrows_snapshot
     plot_arrows_evolution   
+    k_of_P_curve_numpy
+    k_of_P_curve_numba
 '''
 
 def sample_uniform_disk(n, R):
@@ -233,7 +236,7 @@ def plot_density_evolution(cx, cy, assignment, N_c, R, n_bins, r0_ker, P_max,
         ax.axis("off")
 
     cbar = fig.colorbar(im, ax=axes_flat.tolist(), fraction=0.025, pad=0.02) #fraction referred to % width of the colorbar wrt the whole figure, pad to % distance
-    cbar.set_label(f"employmentc density, {color_scale} scale)")
+    cbar.set_label(f"employment density, {color_scale} scale)")
     fig.suptitle(f"Employment density over time - grid {n_bins}x{n_bins}, "
                  f"r0_ker={r0_ker:.2f} km, N_c={N_c}", fontsize=12, y=1.0)
     plt.show()
@@ -406,3 +409,41 @@ def plot_arrows_evolution(cx, cy, wx, wy, assignment, N_c, R,
         fontsize=12, y=1.0
     )
     plt.show()
+
+def k_of_P_curve_numpy(assignment):
+    '''
+    computing cumulative sum array of the number of active centers as a function of the number of workers P,
+    given the assignment array
+    '''
+    _, first_indices = np.unique(assignment, return_index=True) # where each unique index appears for the first time 
+    
+    activations = np.zeros(len(assignment), dtype=np.uint32)    # initializing
+    
+    activations[first_indices] = 1            # array of zeros with ones at the first indices of each unique center
+    return np.cumsum(activations)
+
+@njit
+def k_of_P_curve_numba(assignment,N_c):
+    '''
+    computing cumulative sum array of the number of active centers as a function of the number of workers P,
+    given the assignment array
+    '''
+
+    cumsum = np.empty(len(assignment), dtype=np.uint8)     # initializing cumulative sum array
+    seen = np.zeros(N_c, dtype=np.bool_)                   # it stores if each center has already appeared
+
+    count = 0                                              # counter
+
+    for i in range(len(assignment)):                             
+
+        assignment_i = assignment[i]                       # scalar of the center assigned to the i-th worker
+
+        if not seen[assignment_i]:                         # if new index
+            seen[assignment_i] = True                      # flag it as seen in its first occurrence position 
+
+            count += 1                                     # otherwise it stays the same
+            
+
+        cumsum[i] = count                                # cumulative sum, then come back to the loop
+
+    return cumsum
