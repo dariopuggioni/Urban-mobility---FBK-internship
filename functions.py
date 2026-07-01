@@ -29,7 +29,6 @@ def sample_uniform_disk(n, R):
 
     inverse sampling: X~F^-1(U(0,1))   F is the cdf
     F(r) ~ r^2/R^2  =>  r ~ R*sqrt(U(0,1))'''
-
     r = R * np.sqrt(np.random.random(n))        
     theta = 2 * np.pi * np.random.random(n)            #casual n angles
     return r * np.cos(theta), r * np.sin(theta)        #result in cartesian coordinates
@@ -151,6 +150,11 @@ def run_growth(P_max, N_c, R, l, c, mu,k0_ker,sampling:str='uniform',seed=None):
     """
     fixing initial conditions and  then running the growth of the city by assigning workers to centers
     """
+    
+    if seed is not None:
+        np.random.seed(seed)
+        _seed_numba_rng(seed)
+
     cx = np.empty(N_c)                               # it will store the coordinates of the centers
     cy = np.empty(N_c)
     cx[0], cy[0] = 0.0, 0.0                          # fixing the first center at the origin
@@ -163,7 +167,6 @@ def run_growth(P_max, N_c, R, l, c, mu,k0_ker,sampling:str='uniform',seed=None):
     elif sampling == 'clark':
         T[0] = 1.0                                      # first worker assigned to the first center
         wx, wy = np.empty(P_max), np.empty(P_max)       # initializing empty arrays
-        _seed_numba_rng(seed) 
                                             # setting the seed for reproducibility
     wx,wy,assignment, z_avg, z_std, dist_avg, dist_std = _grow_numba(cx, cy, eta, T, wx, wy, l, c, mu, P_max, N_c,R, k0_ker,sampling)     # assigning to each worker the best center, and updating the traffic of each center
 
@@ -421,6 +424,7 @@ def plot_arrows_evolution(cx, cy, wx, wy, assignment, N_c, R,
                            head_len_pts, head_half_width_pts,shrink_pts,
                            arrow_alpha, arrow_width):
 
+    np.random.seed(seed)
     snapshots = np.linspace(P_init, P_max, n_snapshots, dtype=int)   # population at each snapshot
 
     n_cols = int(np.ceil(np.sqrt(n_snapshots)))
@@ -459,7 +463,7 @@ def k_of_P_curve_numba(assignment,N_c):
     given the assignment array
     '''
 
-    cumsum = np.empty(len(assignment), dtype=np.uint8)     # initializing cumulative sum array
+    cumsum = np.empty(len(assignment), dtype=np.uint16)     # initializing cumulative sum array
     seen = np.zeros(N_c, dtype=np.bool_)                   # it stores if each center has already appeared
 
     count = 0                                              # counter
