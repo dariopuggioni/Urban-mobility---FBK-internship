@@ -62,14 +62,14 @@ def _assign_best_center(cx, cy, eta, T, xt, yt, l, c, mu, N_c):
     and returns the index of the best one (argmax_j Z_ij)'''
     inv_l = 1/l
     inv_c = 1/c
-    best_j,best_z = 0,-1e300
+    best_j,best_z,best_d = 0,-1e300,0
     for j in range(N_c):
         dx,dy = cx[j]-xt, cy[j]-yt
         d = np.sqrt(dx*dx+dy*dy)
         z=eta[j]-(d*inv_l)*(1+(T[j]*inv_c)**mu)
         if z>best_z:
-            best_z,best_j=z,j
-    return best_j
+            best_z,best_j,best_d=z,j,d
+    return best_j,best_z,best_d
 
 
 @njit
@@ -87,9 +87,24 @@ def _grow_numba(cx, cy, eta, T, wx, wy, l, c, mu, P_max, N_c, R, r0_ker, samplin
                sampling='clark': filled in place as worker positions are generated)
     R        : city radius 
     r0_ker   : kernel radius of the Clark profile 
+
+    it will  return worker coordinates and the assignment of each worker to a center
+    it will also return the avg_z, std_z, avg_d, std_d, computed with the welford method, which is sequential
+
+    Welford's method:
+
+    x=new value    n=counter  mu=mean of the values seen so far
+    delta=x-mu     M2=variance accumulator
+    
+    When a new value x comes in:
+
+    1) update counter            2)delta=x-avg                3)update mean avg=avg+delta/n    
+    4) update variance accumulator M2=M2+delta*(x-avg)        5) std = sqrt(M2/(n-1))
     '''
     assignment = np.empty(P_max, dtype=np.int32)   # it will store the index of the center assigned to each worker
- 
+
+    z_avg, z_M2, dist_avg, dist_M2 = 0.0, 0.0, 0.0, 0.0  # initializing welford variables
+
     for t in range(P_max):                         # a time step is the assignment of a new worker
         if sampling == 'uniform':                  
             xt, yt = wx[t], wy[t]                  # coordinates of the worker t saved as temporary variables for accessing memory only once
@@ -113,14 +128,25 @@ def _grow_numba(cx, cy, eta, T, wx, wy, l, c, mu, P_max, N_c, R, r0_ker, samplin
             xt, yt = _sample_point_from_center(cx[src], cy[src], r0_ker, R)
             wx[t], wy[t] = xt, yt           # worker living coordinates
  
-        best_j = _assign_best_center(cx, cy, eta, T, xt, yt, l, c, mu, N_c)  # compute Z_ij for each center j and keep the best
+        best_j, best_z, best_d = _assign_best_center(cx, cy, eta, T, xt, yt, l, c, mu, N_c)  # compute Z_ij for each center j and keep the best
         assignment[t] = best_j
         T[best_j] += 1.0                           # the traffic of that center increases by 1
 
-    return wx, wy, assignment
+
+    #1) update counter            2)delta=x-avg                3)update mean avg=avg+delta/n    
+    #4) update variance accumulator M2=M2+delta*(x-avg)        5) std = sqrt(M2/(n-1))
+        n = t + 1                                  
+        z_delta = best_z - z_avg; dist_delta = best_d - dist_avg
+        z_avg += z_delta / n; dist_avg += dist_delta / n
+        z_M2 += z_delta * (best_z - z_avg); dist_M2 += dist_delta * (best_d - dist_avg)
+
+    z_std = np.sqrt(z_M2 / n)        # at the ebd of the loop
+    dist_std = np.sqrt(dist_M2 / n)
+
+    return wx, wy, assignment, z_avg, z_std, dist_avg, dist_std
 
 
-def run_growth(P_max, N_c, R, l, c, mu,sampling:str='uniform',seed=None,k0_ker=None):
+def run_growth(P_max, N_c, R, l, c, mu,k0_ker,sampling:str='uniform',seed=None):
     """
     fixing initial conditions and  then running the growth of the city by assigning workers to centers
     """
@@ -138,9 +164,9 @@ def run_growth(P_max, N_c, R, l, c, mu,sampling:str='uniform',seed=None,k0_ker=N
         wx, wy = np.empty(P_max), np.empty(P_max)       # initializing empty arrays
         _seed_numba_rng(seed) 
                                             # setting the seed for reproducibility
-    wx,wy,assignment = _grow_numba(cx, cy, eta, T, wx, wy, l, c, mu, P_max, N_c,R,k0_ker,sampling)     # assigning to each worker the best center, and updating the traffic of each center
+    wx,wy,assignment, z_avg, z_std, dist_avg, dist_std = _grow_numba(cx, cy, eta, T, wx, wy, l, c, mu, P_max, N_c,R, k0_ker,sampling)     # assigning to each worker the best center, and updating the traffic of each center
 
-    return cx, cy, eta, wx, wy, assignment
+    return cx, cy, eta, wx, wy, assignment, z_avg, z_std, dist_avg, dist_std
 
 
 def P_star_theory(l, L, N_c, c, mu):
@@ -440,9 +466,7 @@ def k_of_P_curve_numba(assignment,N_c):
 
         if not seen[assignment_i]:                         # if new index
             seen[assignment_i] = True                      # flag it as seen in its first occurrence position 
-
-            count += 1                                     # otherwise it stays the same
-            
+            count += 1                                     # otherwise it stays the same            
 
         cumsum[i] = count                                # cumulative sum, then come back to the loop
 
