@@ -40,7 +40,8 @@ def _seed_numba_rng(seed):
     in numba it is not possible to use np.random.seed(seed) called from
     outside the numba function, so we need to create a function that sets the seed inside numba
     '''
-    np.random.seed(seed)
+    if seed is not None:
+        np.random.seed(seed)
 
 
 @njit
@@ -242,7 +243,10 @@ def plot_density_evolution(cx, cy, assignment, N_c, R, n_bins, r0_ker, P_max,
                             n_snapshots, color_scale, cmap_name):
     
     P_init = 1
-    snapshots = np.linspace(P_init, P_max, n_snapshots, dtype=int) #how many people at each snapshot        
+    if n_snapshots == 1:
+        snapshots = np.array([P_max])
+    else:
+        snapshots = np.linspace(P_init, P_max, n_snapshots, dtype=int) #how many people at each snapshot        
 
     T_final = np.bincount(assignment, minlength=N_c).astype(float) #traffic at final step
     density_final, _ = employment_density_grid(cx, cy, T_final, R, N_c, n_bins, r0_ker)
@@ -344,7 +348,7 @@ def _data_per_point(ax, fig, xlim):
 
 
 def plot_arrows_snapshot(ax, cx, cy, wx, wy, assignment, t, R, N_c,
-                          n_workers_per_snapshot, cmap_name,head_len_pts,
+                          n_workers_per_snapshot, seed,cmap_name,head_len_pts,
                           head_half_width_pts,shrink_pts,arrow_alpha, arrow_width):
     """
     Vectorized version of per-arrow ax.annotate() loop:
@@ -354,7 +358,7 @@ def plot_arrows_snapshot(ax, cx, cy, wx, wy, assignment, t, R, N_c,
     """
     sub_assign = assignment[:t]                    # assignment of the first t workers
     n_show = min(t, n_workers_per_snapshot)        # number of workers to show in the plot
-    np.random.seed(0)
+    np.random.seed(seed)
     idx = np.random.choice(t, n_show, replace=False)  #choose n_show from t workers  
 
     cmap = plt.get_cmap(cmap_name)                 
@@ -412,7 +416,7 @@ def plot_arrows_snapshot(ax, cx, cy, wx, wy, assignment, t, R, N_c,
 
 
 def plot_arrows_evolution(cx, cy, wx, wy, assignment, N_c, R,
-                           n_snapshots, n_workers_per_snapshot,
+                           n_snapshots, n_workers_per_snapshot,seed,
                            cmap_name, P_init, P_max, 
                            head_len_pts, head_half_width_pts,shrink_pts,
                            arrow_alpha, arrow_width):
@@ -426,7 +430,7 @@ def plot_arrows_evolution(cx, cy, wx, wy, assignment, N_c, R,
 
     for ax, t in zip(axes_flat, snapshots):
         plot_arrows_snapshot(ax, cx, cy, wx, wy, assignment, t, R, N_c,
-                              n_workers_per_snapshot, cmap_name, head_len_pts,head_half_width_pts, shrink_pts, arrow_alpha, arrow_width)
+                              n_workers_per_snapshot,seed, cmap_name, head_len_pts,head_half_width_pts, shrink_pts, arrow_alpha, arrow_width)
     for ax in axes_flat[len(snapshots):]:                 # deleting axis for extra axes
         ax.axis("off")
 
